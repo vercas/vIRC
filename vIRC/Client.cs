@@ -313,14 +313,14 @@ namespace vIRC
             var enumerator = MessageParsing.Parse(str, 0, len).GetEnumerator();
 
             bool moved = enumerator.MoveNext();
-            Debug.Assert(moved, "Empty IRC message", "An IRC message seems to contain no valid component: {0}", str.Substring(0, len));
+            Trace.Assert(moved, "Empty IRC message", string.Format("An IRC message seems to contain no valid component: {0}", str.Substring(0, len)));
 
             if (enumerator.Current.IsSource)
             {
                 pref = new Prefix(enumerator.Current.String.Substring(enumerator.Current.Start, enumerator.Current.Length));
 
                 moved = enumerator.MoveNext();
-                Debug.Assert(moved, "Malformed IRC message", "An IRC message seems to contain no valid component: {0}", str.Substring(0, len));
+                Trace.Assert(moved, "Malformed IRC message", string.Format("An IRC message seems to contain no valid component: {0}", str.Substring(0, len)));
             }
 
             cmd = enumerator.Current.String.Substring(enumerator.Current.Start, enumerator.Current.Length);
@@ -428,7 +428,7 @@ namespace vIRC
                     {
                         var m = cl.ServerInformation.ChannelModes[modeChar];
 
-                        Debug.Assert(m.Type != ChannelModeTypes.Unknown, "Unknown mode type for " + modeChar);
+                        Trace.Assert(m.Type != ChannelModeTypes.Unknown, "Unknown mode type for " + modeChar);
 
                         if (m.Type == ChannelModeTypes.Prefix)
                         {
@@ -447,7 +447,7 @@ namespace vIRC
 
         private static async Task HandlerJoin(IrcClient cl, Prefix source, List<string> args)
         {
-            Debug.Assert(source?.Nickname != null, "A JOIN message was received with an invalid prefix!");
+            Trace.Assert(source?.Nickname != null, "A JOIN message was received with an invalid prefix!");
 
             var u = cl._GetUser(source.Nickname);
             var c = cl._GetChannel(args[0]);
@@ -477,7 +477,7 @@ namespace vIRC
 
         private static async Task HandlerPart(IrcClient cl, Prefix source, List<string> args)
         {
-            Debug.Assert(source?.Nickname != null, "A PART message was received with an invalid prefix!");
+            Trace.Assert(source?.Nickname != null, "A PART message was received with an invalid prefix!");
 
             var u = cl._GetUser(source.Nickname);
             IrcChannel c;
@@ -515,7 +515,7 @@ namespace vIRC
 
         private static async Task HandlerQuit(IrcClient cl, Prefix source, List<string> args)
         {
-            Debug.Assert(source?.Nickname != null, "A QUIT message was received with an invalid prefix!");
+            Trace.Assert(source?.Nickname != null, "A QUIT message was received with an invalid prefix!");
 
             var u = cl._GetUser(source.Nickname);
             u.Quit = true;
@@ -555,8 +555,7 @@ namespace vIRC
         {
             var u = cl._GetUser(source.Nickname);
             var action = args[1].GetIrcAction();
-
-
+            
             if (cl.ServerInformation.ChannelTypes.IndexOf(args[0][0]) >= 0)
                 if (action == null)
                     cl.ChannelMessageReceived?.Invoke(cl, new ChannelMessageReceivedEventArgs(cl._GetChannel(args[0])._GetUser(u), args[1], IrcMessageTypes.Standard));
@@ -568,7 +567,7 @@ namespace vIRC
                 else
                     cl.UserMessageReceived?.Invoke(cl, new UserMessageReceivedEventArgs(u, action, IrcMessageTypes.Action));
             else
-                Debug.Fail("Unknown PRIVMSG target: " + args[0]);
+                Trace.Fail("Unknown PRIVMSG target: " + args[0]);
         }
 
         private static async Task HandlerNotice(IrcClient cl, Prefix source, List<string> args)
@@ -582,7 +581,7 @@ namespace vIRC
                 else if (cl.normalizer.Equals(args[0], cl.LocalUser.Nickname))
                     cl.UserMessageReceived?.Invoke(cl, new UserMessageReceivedEventArgs(u, args[1], IrcMessageTypes.Notice));
                 else
-                    Debug.Fail("Unknown NOTICE target: " + args[0]);
+                    Trace.Fail("Unknown NOTICE target: " + args[0]);
             }
         }
 
@@ -603,14 +602,14 @@ namespace vIRC
 
         private static async Task Handler332(IrcClient cl, Prefix source, List<string> args)
         {
-            Debug.Assert(args[0] == cl.LocalUser.Nickname);
+            Trace.Assert(args[0] == cl.LocalUser.Nickname);
 
             cl._GetChannel(args[1]).Topic = args[2];
         }
 
         private static async Task Handler353(IrcClient cl, Prefix source, List<string> args)
         {
-            Debug.Assert(args[0] == cl.LocalUser.Nickname);
+            Trace.Assert(args[0] == cl.LocalUser.Nickname);
 
             //  TODO: Handle args[1]
             var c = cl._GetChannel(args[2]);
@@ -633,7 +632,7 @@ namespace vIRC
 
         private static async Task Handler366(IrcClient cl, Prefix source, List<string> args)
         {
-            Debug.Assert(args[0] == cl.LocalUser.Nickname);
+            Trace.Assert(args[0] == cl.LocalUser.Nickname);
             
             var c = cl._GetChannel(args[1]);
 
