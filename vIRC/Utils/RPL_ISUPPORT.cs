@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -49,7 +50,7 @@ namespace vIRC.Utils
                 {
                     if (!handlers.TryGetValue(param.Substring(0, eqInd), out han))
                     {
-                        System.Diagnostics.Debug.WriteLine("\tUnhandled RPL_ISUPPORT parameter: {0}", (object)param);
+                        Trace.WriteLine(string.Format("\tUnhandled RPL_ISUPPORT parameter: {0}", param));
 
                         continue;
                     }
@@ -57,7 +58,7 @@ namespace vIRC.Utils
                 else
                     if (!handlers.TryGetValue(param, out han))
                     {
-                        System.Diagnostics.Debug.WriteLine("\tUnhandled RPL_ISUPPORT parameter: {0}", (object)param);
+                        Trace.WriteLine(string.Format("\tUnhandled RPL_ISUPPORT parameter: {0}", param));
 
                         continue;
                     }

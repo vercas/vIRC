@@ -66,6 +66,11 @@ namespace vIRC
         public IrcServerInformation ServerInformation { get; internal set; }
 
         /// <summary>
+        /// Gets the <see cref="vIRC.CaseMappings.INormalizer"/> used for normalizing, comparing and hashing nicknames and channel names.
+        /// </summary>
+        public CaseMappings.INormalizer NameNormalizer { get { return this.normalizer; } }
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="vIRC.IrcClient"/> class.
         /// </summary>
         public IrcClient()
@@ -74,6 +79,16 @@ namespace vIRC
         }
 
         #region Connection
+
+        /// <summary>
+        /// Raised when the client connected to the server.
+        /// </summary>
+        public event EventHandler Connected;
+
+        /// <summary>
+        /// Raised when the client quit from the server.
+        /// </summary>
+        public event EventHandler Quit;
 
         TaskCompletionSource<bool> connectionSource = null;
         TaskCompletionSource<bool> quitSource = null;
@@ -209,6 +224,10 @@ namespace vIRC
                 }
                 catch { /* Swallow exceptions. They are irrelevant. */ }
             }
+            else
+                return;
+
+            this.Quit?.Invoke(this, new EventArgs());
         }
 
         /// <summary>
@@ -270,7 +289,7 @@ namespace vIRC
 
             this.Status = IrcClientStatus.Offline;
 
-            Debug.WriteLine("Connection appears to be closed.");
+            Trace.WriteLine("Connection appears to be closed.");
         }
 
         private void StartReceiving()
@@ -285,7 +304,7 @@ namespace vIRC
         /// <param name="len"></param>
         protected virtual async Task ProcessMessage(string str, int len)
         {
-            Debug.WriteLine("Processing message: {0}", (object)str.Substring(0, len));
+            Trace.WriteLine(string.Format("Processing message: {0}", str.Substring(0, len)));
             
             var prlst = new List<string>(15);
             string cmd = null;
@@ -293,25 +312,29 @@ namespace vIRC
 
             var enumerator = MessageParsing.Parse(str, 0, len).GetEnumerator();
 
-            Debug.Assert(enumerator.MoveNext(), "Empty IRC message", "An IRC message seems to contain no valid component: {0}", str.Substring(0, len));
+            bool moved = enumerator.MoveNext();
+            Debug.Assert(moved, "Empty IRC message", "An IRC message seems to contain no valid component: {0}", str.Substring(0, len));
 
             if (enumerator.Current.IsSource)
             {
                 pref = new Prefix(enumerator.Current.String.Substring(enumerator.Current.Start, enumerator.Current.Length));
 
-                Debug.Assert(enumerator.MoveNext(), "Malformed IRC message", "An IRC message seems to contain no valid component: {0}", str.Substring(0, len));
+                moved = enumerator.MoveNext();
+                Debug.Assert(moved, "Malformed IRC message", "An IRC message seems to contain no valid component: {0}", str.Substring(0, len));
             }
 
             cmd = enumerator.Current.String.Substring(enumerator.Current.Start, enumerator.Current.Length);
 
             MessageHandler han = null;
-
+            
             if (!Handlers.TryGetValue(cmd, out han))
             {
-                Debug.WriteLine("Unhandled IRC message command: {0} (source: {1})", cmd, pref?.ToString() ?? "NULL");
+#if TRACE
+                Trace.WriteLine(string.Format("Unhandled IRC message command: {0} (source: {1})", cmd, pref?.ToString() ?? "NULL"));
 
                 while (enumerator.MoveNext())
-                    Debug.WriteLine("\t{0}", enumerator.Current);
+                    Trace.WriteLine(string.Format("\t{0}", enumerator.Current));
+#endif
 
                 return;
             }
@@ -334,7 +357,7 @@ namespace vIRC
         /// <param name="args"></param>
         public delegate Task MessageHandler(IrcClient cl, Prefix source, List<string> args);
 
-        private static Dictionary<string, MessageHandler> Handlers = new Dictionary<string, MessageHandler>()
+        private static Dictionary<string, MessageHandler> Handlers = new Dictionary<string, MessageHandler>(StringComparer.Ordinal)
         {
             { "PING", HandlerPing },
 
@@ -373,7 +396,7 @@ namespace vIRC
             if (args[1][0] == '+')
                 add = true;
             else if (args[1][0] != '-')
-                Debug.WriteLine("Invalid modes specification: {0}", (object)args[1]);
+                Trace.WriteLine(string.Format("Invalid modes specification: {0}", args[1]));
 
             if (source?.Nickname == args[0])
             {
@@ -387,7 +410,11 @@ namespace vIRC
                     u.modes.RemoveAll(c => args[1].IndexOf(c) > 0);
 
                 if (cl.LocalUser == u && cl.connectionSource != null)
+                {
                     cl.connectionSource.SetResult(true);
+
+                    cl.Connected?.Invoke(cl, new EventArgs());
+                }
             }
             else
             {
@@ -546,14 +573,17 @@ namespace vIRC
 
         private static async Task HandlerNotice(IrcClient cl, Prefix source, List<string> args)
         {
-            var u = cl._GetUser(source.Nickname);
+            if (source.Nickname != null)
+            {
+                var u = cl._GetUser(source.Nickname);
 
-            if (cl.ServerInformation.ChannelTypes.IndexOf(args[0][0]) >= 0)
-                cl.ChannelMessageReceived?.Invoke(cl, new ChannelMessageReceivedEventArgs(cl._GetChannel(args[0])._GetUser(u), args[1], IrcMessageTypes.Notice));
-            else if (cl.normalizer.Equals(args[0], cl.LocalUser.Nickname))
-                cl.UserMessageReceived?.Invoke(cl, new UserMessageReceivedEventArgs(u, args[1], IrcMessageTypes.Notice));
-            else
-                Debug.Fail("Unknown NOTICE target: " + args[0]);
+                if (cl.ServerInformation.ChannelTypes.IndexOf(args[0][0]) >= 0)
+                    cl.ChannelMessageReceived?.Invoke(cl, new ChannelMessageReceivedEventArgs(cl._GetChannel(args[0])._GetUser(u), args[1], IrcMessageTypes.Notice));
+                else if (cl.normalizer.Equals(args[0], cl.LocalUser.Nickname))
+                    cl.UserMessageReceived?.Invoke(cl, new UserMessageReceivedEventArgs(u, args[1], IrcMessageTypes.Notice));
+                else
+                    Debug.Fail("Unknown NOTICE target: " + args[0]);
+            }
         }
 
         private static async Task Handler001(IrcClient cl, Prefix source, List<string> args)
@@ -646,7 +676,7 @@ namespace vIRC
             for (int i = 0, off = 0; i < msgs.Length; off += msgs[i++].Length)
                 Buffer.BlockCopy(msgs[i], 0, major, off, msgs[i].Length);
 
-            Debug.WriteLine("Sending {0} pieces totalling {1} bytes.", msgs.Length, major.Length);
+            Trace.WriteLine(string.Format("Sending {0} pieces totalling {1} bytes.", msgs.Length, major.Length));
 
             return this.stream.WriteAsync(major, 0, major.Length, cancellationToken);
         }
