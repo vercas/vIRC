@@ -46,6 +46,10 @@ namespace vIRC
         /// Gets the maximum length of a kick message on the server.
         /// </summary>
         public int? KickLength { get; internal set; } = null;
+        /// <summary>
+        /// Gets the maximum length of an away message on the server.
+        /// </summary>
+        public int? AwayLength { get; internal set; } = null;
 
         /// <summary>
         /// Gets the characters that begin channel names on this server.

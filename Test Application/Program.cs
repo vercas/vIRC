@@ -86,6 +86,11 @@ namespace Test_Application
                     Console.WriteLine(t5.Result);
                     break;
 
+                case "away":
+                    var t6 = cl.SetAwayAsync(split.Length > 1 ? split[1] : null);
+                    t6.Wait();
+                    break;
+
                 case "part":
                     var t1 = testChan.PartAsync();
                     t1.Wait();

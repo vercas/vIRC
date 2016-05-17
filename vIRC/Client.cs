@@ -284,7 +284,7 @@ namespace vIRC
                     stringBuilder.Remove(0, endIndex + 2);
 
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
-                    this.ProcessMessage(str, endIndex);
+                    this.ProcessMessageAsync(str, endIndex);
 #pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
                 } while (this.stringBuilder.Length >= 2 && this.Status != IrcClientStatus.Offline);
             } while (this.Status != IrcClientStatus.Offline);
@@ -300,11 +300,11 @@ namespace vIRC
         }
 
         /// <summary>
-        /// 
+        /// Processes the IRC message in the given substring.
         /// </summary>
         /// <param name="str"></param>
         /// <param name="len"></param>
-        protected virtual async Task ProcessMessage(string str, int len)
+        protected virtual async Task ProcessMessageAsync(string str, int len)
         {
             Trace.WriteLine(string.Format("Processing message: {0}", str.Substring(0, len)));
             
@@ -379,6 +379,9 @@ namespace vIRC
             { "004", Handler004 },
             { RPL_ISUPPORT.NumericCommand, RPL_ISUPPORT.Handler },
 
+            { "305", Handler305 },
+            { "306", Handler306 },
+
             { "332", Handler332 },
             { "353", Handler353 },
             { "366", Handler366 },
@@ -391,7 +394,7 @@ namespace vIRC
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
         private static async Task HandlerPing(IrcClient cl, Prefix source, List<string> args)
         {
-            await cl.WriteMessages(MessageBuilder.Pong(args[0]));
+            await cl.WriteMessagesAsync(MessageBuilder.Pong(args[0]));
         }
 
         private static async Task HandlerNick(IrcClient cl, Prefix source, List<string> args)
@@ -668,6 +671,16 @@ namespace vIRC
                 cl.ServerInformation.channelModes.Add(c, new IrcChannelModeSpecification(c));
         }
 
+        private static async Task Handler305(IrcClient cl, Prefix source, List<string> args)
+        {
+            Interlocked.Exchange(ref cl.awayCompletionSource, null)?.SetResult(false);
+        }
+
+        private static async Task Handler306(IrcClient cl, Prefix source, List<string> args)
+        {
+            Interlocked.Exchange(ref cl.awayCompletionSource, null)?.SetResult(true);
+        }
+
         private static async Task Handler332(IrcClient cl, Prefix source, List<string> args)
         {
             Trace.Assert(args[0] == cl.LocalUser.Nickname);
@@ -765,7 +778,7 @@ namespace vIRC
         /// </summary>
         /// <param name="piece"></param>
         /// <returns></returns>
-        protected internal Task WriteMessages(IEnumerable<object> piece)
+        protected internal Task WriteMessagesAsync(IEnumerable<object> piece)
         {
             return this.WriteMessagesAsync(piece, CancellationToken.None);
         }
@@ -915,12 +928,20 @@ namespace vIRC
         {
             if (channel == null)
                 throw new ArgumentNullException("channel");
-
+            if (channel.Length < 1)
+                throw new ArgumentOutOfRangeException("Channel name must be non-empty.");
+            
             channel = this.normalizer.Normalize(channel);
             //  The name of the channel must be normalized according to the known rules.
 
             if (this.Status != IrcClientStatus.Online)
                 throw new InvalidOperationException("Client must be fully connected to join channels.");
+
+            if (this.ServerInformation.ChannelTypes.IndexOf(channel[0]) < 0)
+                throw new ArgumentOutOfRangeException("The given channel type (first character) is not supported by the server.");
+
+            if (channel.Length > this.ServerInformation.ChannelLength)
+                throw new ArgumentOutOfRangeException("The given channel name is too long for this server.");
 
             bool channelExisted;
             IrcChannel chan = this.GetChannel(channel, out channelExisted);
@@ -968,15 +989,15 @@ namespace vIRC
             if (!chan.Joined)
                 throw new IndexOutOfRangeException("The client has not joined that channel (anymore).");
 
+            if (this.Status != IrcClientStatus.Online)
+                throw new InvalidOperationException("Client must be fully connected to part channels.");
+
             var oldPartStatus = Interlocked.CompareExchange(ref chan.partingStatus, 1, 0);
 
             if (oldPartStatus == 1)
                 throw new InvalidOperationException("The given channel is already in the process of parting.");
             else if (oldPartStatus == 2)
                 throw new InvalidOperationException("The given channel is already parted.");
-
-            if (this.Status != IrcClientStatus.Online)
-                throw new InvalidOperationException("Client must be fully connected to part channels.");
 
             var task = (chan.partCompletionSource = new TaskCompletionSource<bool>()).Task;
 
@@ -1217,6 +1238,52 @@ namespace vIRC
         public Task<NickChangeResult> ChangeNicknameAsync(string newNickname)
         {
             return this.ChangeNicknameAsync(newNickname, CancellationToken.None);
+        }
+
+        #endregion
+
+        #region Away
+        
+        TaskCompletionSource<bool> awayCompletionSource = null;
+        int awayState = 0;
+
+        /// <summary>
+        /// Sets the away state of the local user, and monitors cancellation requests.
+        /// </summary>
+        /// <param name="reason">Reason for being away; null for un-away.</param>
+        /// <param name="cancellationToken">The token to monitor for cancellation requests. The default value is <see cref="System.Threading.CancellationToken.None"/>.</param>
+        /// <returns>True if the client becomes away; false if the away status was removed.</returns>
+        public async Task<bool> SetAwayAsync(string reason, CancellationToken cancellationToken)
+        {
+            if (this.Status != IrcClientStatus.Online)
+                throw new InvalidOperationException("Client must be fully connected to change its away status.");
+
+            if (this.ServerInformation.AwayLength.HasValue
+                && reason != null && reason.Length > this.ServerInformation.AwayLength)
+                throw new ArgumentOutOfRangeException("Away reason is too long for this server.");
+            
+            if (0 != Interlocked.Exchange(ref this.awayState, 1))
+                throw new InvalidOperationException("An away status change is already in progress.");
+
+            var t = (this.awayCompletionSource = new TaskCompletionSource<bool>()).Task;
+
+            await this.WriteMessagesAsync(MessageBuilder.Away(reason), cancellationToken);
+
+            await t;
+
+            Thread.VolatileWrite(ref this.awayState, 0);
+
+            return t.Result;
+        }
+
+        /// <summary>
+        /// Sets the away state of the local user.
+        /// </summary>
+        /// <param name="reason">Reason for being away; null for un-away.</param>
+        /// <returns>True if the client becomes away; false if the away status was removed.</returns>
+        public Task<bool> SetAwayAsync(string reason)
+        {
+            return this.SetAwayAsync(reason, CancellationToken.None);
         }
 
         #endregion

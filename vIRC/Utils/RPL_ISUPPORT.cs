@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace vIRC.Utils
@@ -27,6 +27,7 @@ namespace vIRC.Utils
             { "CHANNELLEN", ChannellenHandler },
             { "TOPICLEN", TopiclenHandler },
             { "KICKLEN", KicklenHandler },
+            { "AWAYLEN", AwaylenHandler },
 
             { "MAXTARGETS", MaxtargetsHandler },
             { "TARGMAX", TargmaxHandler },
@@ -34,6 +35,7 @@ namespace vIRC.Utils
             { "PREFIX", PrefixHandler },
             { "CHANMODES", ChanmodesHandler },
             { "STATUSMSG", StatusmsgHandler },
+            { "CHANTYPES", ChantypesHandler },
 
             { "WHOX", WhoxHandler },
         };
@@ -78,7 +80,7 @@ namespace vIRC.Utils
 
         internal static async Task MaxchannelsHandler(IrcClient cl, string param)
         {
-            cl.ServerInformation.MaxChannels = int.Parse(param.Substring("MAXCHANNELS=".Length), System.Globalization.CultureInfo.InvariantCulture);
+            cl.ServerInformation.MaxChannels = int.Parse(param.Substring("MAXCHANNELS=".Length), CultureInfo.InvariantCulture);
         }
 
         internal static async Task ChanlimitHandler(IrcClient cl, string param)
@@ -88,27 +90,32 @@ namespace vIRC.Utils
 
         internal static async Task NicklenHandler(IrcClient cl, string param)
         {
-            cl.ServerInformation.NickLength = int.Parse(param.Substring("NICKLEN=".Length), System.Globalization.CultureInfo.InvariantCulture);
+            cl.ServerInformation.NickLength = int.Parse(param.Substring("NICKLEN=".Length), CultureInfo.InvariantCulture);
         }
 
         internal static async Task ChannellenHandler(IrcClient cl, string param)
         {
-            cl.ServerInformation.ChannelLength = int.Parse(param.Substring("CHANNELLEN=".Length), System.Globalization.CultureInfo.InvariantCulture);
+            cl.ServerInformation.ChannelLength = int.Parse(param.Substring("CHANNELLEN=".Length), CultureInfo.InvariantCulture);
         }
 
         internal static async Task TopiclenHandler(IrcClient cl, string param)
         {
-            cl.ServerInformation.TopicLength = int.Parse(param.Substring("TOPICLEN=".Length), System.Globalization.CultureInfo.InvariantCulture);
+            cl.ServerInformation.TopicLength = int.Parse(param.Substring("TOPICLEN=".Length), CultureInfo.InvariantCulture);
         }
 
         internal static async Task KicklenHandler(IrcClient cl, string param)
         {
-            cl.ServerInformation.KickLength = int.Parse(param.Substring("KICKLEN=".Length), System.Globalization.CultureInfo.InvariantCulture);
+            cl.ServerInformation.KickLength = int.Parse(param.Substring("KICKLEN=".Length), CultureInfo.InvariantCulture);
+        }
+
+        internal static async Task AwaylenHandler(IrcClient cl, string param)
+        {
+            cl.ServerInformation.AwayLength = int.Parse(param.Substring("AWAYLEN=".Length), CultureInfo.InvariantCulture);
         }
 
         internal static async Task MaxtargetsHandler(IrcClient cl, string param)
         {
-            cl.ServerInformation.MaxTargets = int.Parse(param.Substring("MAXTARGETS=".Length), System.Globalization.CultureInfo.InvariantCulture);
+            cl.ServerInformation.MaxTargets = int.Parse(param.Substring("MAXTARGETS=".Length), CultureInfo.InvariantCulture);
         }
 
         internal static async Task TargmaxHandler(IrcClient cl, string param)
@@ -164,6 +171,11 @@ namespace vIRC.Utils
         internal static async Task StatusmsgHandler(IrcClient cl, string param)
         {
             cl.ServerInformation.NoticePrefixes = param.Substring("STATUSMSG=".Length);
+        }
+
+        internal static async Task ChantypesHandler(IrcClient cl, string param)
+        {
+            cl.ServerInformation.ChannelTypes = param.Substring("CHANTYPES=".Length);
         }
 
         internal static async Task WhoxHandler(IrcClient cl, string param)

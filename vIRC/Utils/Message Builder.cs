@@ -56,6 +56,19 @@ namespace vIRC.Utils
         }
 
         /// <summary>
+        /// AWAY [:reason]
+        /// </summary>
+        /// <param name="reason"></param>
+        /// <returns></returns>
+        public static IEnumerable<object> Away(string reason)
+        {
+            if (reason == null || reason.Length == 0)
+                return new object[] { "AWAY\r\n" };
+            else
+                return new object[] { "AWAY :", reason, IrcClient.EndMessageBytes };
+        }
+
+        /// <summary>
         /// PING :(message)
         /// </summary>
         /// <param name="message"></param>
