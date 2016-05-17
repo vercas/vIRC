@@ -90,7 +90,7 @@ namespace vIRC
         /// <summary>
         /// Raised when the client quit from the server.
         /// </summary>
-        public event EventHandler Quit;
+        public event EventHandler<DisconnectedEventArgs> Disconnected;
 
         TaskCompletionSource<bool> connectionSource = null;
         TaskCompletionSource<bool> quitSource = null;
@@ -229,7 +229,7 @@ namespace vIRC
             else
                 return;
 
-            this.Quit?.Invoke(this, new EventArgs());
+            this.Disconnected?.Invoke(this, new DisconnectedEventArgs(DisconnectReason.Quit));
         }
 
         /// <summary>
@@ -289,8 +289,9 @@ namespace vIRC
                 } while (this.stringBuilder.Length >= 2 && this.Status != IrcClientStatus.Offline);
             } while (this.Status != IrcClientStatus.Offline);
 
-            this.Status = IrcClientStatus.Offline;
-
+            if ((int)IrcClientStatus.Quitting != Interlocked.Exchange(ref this.status, (int)IrcClientStatus.Offline))
+                this.Disconnected?.Invoke(this, new DisconnectedEventArgs(DisconnectReason.ConnectionLoss));
+            
             Trace.WriteLine("Connection appears to be closed.");
         }
 
