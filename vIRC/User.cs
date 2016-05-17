@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 
 namespace vIRC
 {
+    using Events;
+
     /// <summary>
     /// Represents a user in IRC.
     /// </summary>
@@ -69,6 +71,25 @@ namespace vIRC
         #region Messaging
 
         /// <summary>
+        /// Raised when a private message is received from this user.
+        /// </summary>
+        public event EventHandler<MessageReceivedEventArgs> PrivateMessageReceived;
+        /// <summary>
+        /// Raised when a message is received from this user on any channel.
+        /// </summary>
+        public event EventHandler<ChannelMessageReceivedEventArgs> ChannelMessageReceived;
+
+        internal void OnPrivateMessageReceived(MessageReceivedEventArgs e)
+        {
+            this.PrivateMessageReceived?.Invoke(this, e);
+        }
+
+        internal void OnChannelMessageReceived(ChannelMessageReceivedEventArgs e)
+        {
+            this.ChannelMessageReceived?.Invoke(this, e);
+        }
+
+        /// <summary>
         /// Sends a message to this user, and monitors cancellation requests.
         /// </summary>
         /// <param name="message">The message to send to the user.</param>
@@ -89,6 +110,20 @@ namespace vIRC
         public Task SendMessageAsync(string message, IrcMessageTypes type = IrcMessageTypes.Standard)
         {
             return this.Client.SendMessageAsync(this, message, type, CancellationToken.None);
+        }
+
+        #endregion
+
+        #region Nickname
+
+        /// <summary>
+        /// Raised when the user's nickname has changed.
+        /// </summary>
+        public event EventHandler<UserNicknameChangedEventArgs> NicknameChanged;
+
+        internal void OnNicknameChanged(UserNicknameChangedEventArgs e)
+        {
+            this.NicknameChanged?.Invoke(this, e);
         }
 
         #endregion

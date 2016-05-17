@@ -595,17 +595,30 @@ namespace vIRC
         {
             var u = cl._GetUser(source.Nickname);
             var action = args[1].GetIrcAction();
-            
+
             if (cl.ServerInformation.ChannelTypes.IndexOf(args[0][0]) >= 0)
-                if (action == null)
-                    cl.ChannelMessageReceived?.Invoke(cl, new ChannelMessageReceivedEventArgs(cl._GetChannel(args[0])._GetUser(u), args[1], IrcMessageTypes.Standard));
-                else
-                    cl.ChannelMessageReceived?.Invoke(cl, new ChannelMessageReceivedEventArgs(cl._GetChannel(args[0])._GetUser(u), action, IrcMessageTypes.Action));
+            {
+                var c = cl._GetChannel(args[0]);
+                var cu = c._GetUser(u);
+
+                ChannelMessageReceivedEventArgs e = (action == null)
+                    ? new ChannelMessageReceivedEventArgs(cu, args[1], IrcMessageTypes.Standard)
+                    : new ChannelMessageReceivedEventArgs(cu, action, IrcMessageTypes.Action);
+
+                cl.ChannelMessageReceived?.Invoke(cl, e);
+                c.OnMessageReceived(e);
+                cu.OnMessageReceived(e);
+                u.OnChannelMessageReceived(e);
+            }
             else if (cl.normalizer.Equals(args[0], cl.LocalUser.Nickname))
-                if (action == null)
-                    cl.UserMessageReceived?.Invoke(cl, new UserMessageReceivedEventArgs(u, args[1], IrcMessageTypes.Standard));
-                else
-                    cl.UserMessageReceived?.Invoke(cl, new UserMessageReceivedEventArgs(u, action, IrcMessageTypes.Action));
+            {
+                UserMessageReceivedEventArgs e = (action == null)
+                    ? new UserMessageReceivedEventArgs(u, args[1], IrcMessageTypes.Standard)
+                    : new UserMessageReceivedEventArgs(u, action, IrcMessageTypes.Action);
+
+                cl.UserMessageReceived?.Invoke(cl, e);
+                u.OnPrivateMessageReceived(e);
+            }
             else
                 Trace.Fail("Unknown PRIVMSG target: " + args[0]);
         }
@@ -617,9 +630,24 @@ namespace vIRC
                 var u = cl._GetUser(source.Nickname);
 
                 if (cl.ServerInformation.ChannelTypes.IndexOf(args[0][0]) >= 0)
-                    cl.ChannelMessageReceived?.Invoke(cl, new ChannelMessageReceivedEventArgs(cl._GetChannel(args[0])._GetUser(u), args[1], IrcMessageTypes.Notice));
+                {
+                    var c = cl._GetChannel(args[0]);
+                    var cu = c._GetUser(u);
+
+                    ChannelMessageReceivedEventArgs e = new ChannelMessageReceivedEventArgs(cu, args[1], IrcMessageTypes.Notice);
+
+                    cl.ChannelMessageReceived?.Invoke(cl, e);
+                    c.OnMessageReceived(e);
+                    cu.OnMessageReceived(e);
+                    u.OnChannelMessageReceived(e);
+                }
                 else if (cl.normalizer.Equals(args[0], cl.LocalUser.Nickname))
-                    cl.UserMessageReceived?.Invoke(cl, new UserMessageReceivedEventArgs(u, args[1], IrcMessageTypes.Notice));
+                {
+                    UserMessageReceivedEventArgs e = new UserMessageReceivedEventArgs(u, args[1], IrcMessageTypes.Notice);
+
+                    cl.UserMessageReceived?.Invoke(cl, e);
+                    u.OnPrivateMessageReceived(e);
+                }
                 else
                     Trace.Fail("Unknown NOTICE target: " + args[0]);
             }
@@ -725,7 +753,9 @@ namespace vIRC
             for (int i = 0, off = 0; i < msgs.Length; off += msgs[i++].Length)
                 Buffer.BlockCopy(msgs[i], 0, major, off, msgs[i].Length);
 
-            Trace.WriteLine(string.Format("Sending {0} pieces totalling {1} bytes.", msgs.Length, major.Length));
+            Trace.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture
+                , "Sending {0} pieces totalling {1} bytes."
+                , msgs.Length, major.Length));
 
             return this.stream.WriteAsync(major, 0, major.Length, cancellationToken);
         }

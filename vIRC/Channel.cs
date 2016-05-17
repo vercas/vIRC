@@ -175,6 +175,16 @@ namespace vIRC
         #region Messaging
 
         /// <summary>
+        /// Raised when a message is received from this channel.
+        /// </summary>
+        public event EventHandler<ChannelMessageReceivedEventArgs> MessageReceived;
+
+        internal void OnMessageReceived(ChannelMessageReceivedEventArgs e)
+        {
+            this.MessageReceived?.Invoke(this, e);
+        }
+
+        /// <summary>
         /// Sends a message to this channel, and monitors cancellation requests.
         /// </summary>
         /// <param name="message">The message to send to the channel.</param>

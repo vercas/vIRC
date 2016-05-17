@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 
 namespace vIRC
 {
+    using Events;
+
     /// <summary>
     /// Represents an <see cref="vIRC.IrcUser"/> in a <see cref="vIRC.IrcChannel"/>.
     /// </summary>
@@ -56,5 +58,19 @@ namespace vIRC
             this.Channel = ch;
             this.User = us;
         }
+
+        #region Messaging
+
+        /// <summary>
+        /// Raised when a message is received from this specific channel user.
+        /// </summary>
+        public event EventHandler<MessageReceivedEventArgs> MessageReceived;
+
+        internal void OnMessageReceived(MessageReceivedEventArgs e)
+        {
+            this.MessageReceived?.Invoke(this, e);
+        }
+
+        #endregion
     }
 }
