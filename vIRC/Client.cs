@@ -38,7 +38,8 @@ namespace vIRC
         internal ConcurrentDictionary<string, IrcUser> users = new ConcurrentDictionary<string, IrcUser>(StringComparer.OrdinalIgnoreCase);
         internal ConcurrentDictionary<string, IrcChannel> channels = new ConcurrentDictionary<string, IrcChannel>(StringComparer.OrdinalIgnoreCase);
 
-        int status = (int)IrcClientStatus.Offline;
+        private object nickChangeSyncer = new object();
+        //  Easiest way to avoid a name swap exploit.
 
         /// <summary>
         /// Gets the IRC protocol in use.
@@ -59,6 +60,7 @@ namespace vIRC
                 this.status = (int)value;
             }
         }
+        int status = (int)IrcClientStatus.Offline;
 
         /// <summary>
         /// Gets the information known about the server, if any.
@@ -361,6 +363,7 @@ namespace vIRC
         {
             { "PING", HandlerPing },
 
+            { "NICK", HandlerNick },
             { "MODE", HandlerMode },
 
             { "JOIN", HandlerJoin },
@@ -380,12 +383,49 @@ namespace vIRC
             { "353", Handler353 },
             { "366", Handler366 },
             { "396", Handler396 },
+
+            { "433", Handler433 },
+            { "436", Handler436 },
         };
 
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
         private static async Task HandlerPing(IrcClient cl, Prefix source, List<string> args)
         {
             await cl.WriteMessages(MessageBuilder.Pong(args[0]));
+        }
+
+        private static async Task HandlerNick(IrcClient cl, Prefix source, List<string> args)
+        {
+            Trace.Assert(source?.Nickname != null, "A NICK message was received with an invalid prefix!");
+
+            IrcUser u;
+            bool found, added = false, removed = false;
+
+            lock (cl.nickChangeSyncer)
+                if (found = cl.users.TryGetValue(source.Nickname, out u))
+                    if (added = cl.users.TryAdd(args[0], u))
+                        removed = cl.users.TryRemove(source.Nickname, out u);
+
+            Debug.Assert(found);
+            //  The former nick must have been registered!
+
+            if (!u.Quit)
+            {
+                //  The client hasn't quit in the meantime, so all three operations should have succeeded.
+
+                Debug.Assert(added);
+                Debug.Assert(removed);
+
+                u.Nickname = args[0];
+
+                if (u == cl.LocalUser)
+                    Interlocked.Exchange(ref cl.nickChangeCompletionSource, null)?.SetResult(NickChangeResult.Success);
+
+                var e = new UserNicknameChangedEventArgs(u, source.Nickname);
+
+                cl.UserNicknameChanged?.Invoke(cl, e);
+                u.OnNicknameChanged(e);
+            }
         }
 
         private static async Task HandlerMode(IrcClient cl, Prefix source, List<string> args)
@@ -652,6 +692,16 @@ namespace vIRC
         {
             cl.LocalUser.Hostname = args[1];
         }
+
+        private static async Task Handler433(IrcClient cl, Prefix source, List<string> args)
+        {
+            Interlocked.Exchange(ref cl.nickChangeCompletionSource, null)?.SetResult(NickChangeResult.InUse);
+        }
+
+        private static async Task Handler436(IrcClient cl, Prefix source, List<string> args)
+        {
+            Interlocked.Exchange(ref cl.nickChangeCompletionSource, null)?.SetResult(NickChangeResult.Collision);
+        }
 #pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
 
         #endregion
@@ -667,7 +717,7 @@ namespace vIRC
         protected internal Task WriteMessagesAsync(IEnumerable<object> pieces, CancellationToken cancellationToken)
         {
             if (this.Status == IrcClientStatus.Offline)
-                throw new InvalidOperationException("Client must connect to a server first.");
+                throw new InvalidOperationException("Client must connect to a server before sending any messages.");
 
             byte[][] msgs = pieces.Select(msg => msg is byte[] ? (byte[])msg : this.enc.GetBytes(msg.ToString())).ToArray();
             byte[] major = new byte[msgs.Sum(ba => ba.Length)];
@@ -840,7 +890,7 @@ namespace vIRC
             //  The name of the channel must be normalized according to the known rules.
 
             if (this.Status != IrcClientStatus.Online)
-                throw new InvalidOperationException("Client must be online to join channels.");
+                throw new InvalidOperationException("Client must be fully connected to join channels.");
 
             bool channelExisted;
             IrcChannel chan = this.GetChannel(channel, out channelExisted);
@@ -894,6 +944,9 @@ namespace vIRC
                 throw new InvalidOperationException("The given channel is already in the process of parting.");
             else if (oldPartStatus == 2)
                 throw new InvalidOperationException("The given channel is already parted.");
+
+            if (this.Status != IrcClientStatus.Online)
+                throw new InvalidOperationException("Client must be fully connected to part channels.");
 
             var task = (chan.partCompletionSource = new TaskCompletionSource<bool>()).Task;
 
@@ -1078,6 +1131,62 @@ namespace vIRC
         public Task SendMessageAsync(string target, string message, IrcMessageTypes type = IrcMessageTypes.Standard)
         {
             return this.SendMessageAsync(target, message, type, CancellationToken.None);
+        }
+
+        #endregion
+
+        #region Nicknames
+
+        /// <summary>
+        /// Raised when a user changes their nickname.
+        /// </summary>
+        public event EventHandler<UserNicknameChangedEventArgs> UserNicknameChanged;
+
+        TaskCompletionSource<NickChangeResult> nickChangeCompletionSource = null;
+        int nickChangeState = 0;
+
+        /// <summary>
+        /// Attempts to change the nickname of the local user, and monitors cancellation requests.
+        /// </summary>
+        /// <param name="newNickname"></param>
+        /// <param name="cancellationToken">The token to monitor for cancellation requests. The default value is <see cref="System.Threading.CancellationToken.None"/>.</param>
+        /// <returns></returns>
+        public async Task<NickChangeResult> ChangeNicknameAsync(string newNickname, CancellationToken cancellationToken)
+        {
+            if (newNickname == null)
+                throw new ArgumentNullException("newNickname");
+
+            if (this.Status != IrcClientStatus.Online)
+                throw new InvalidOperationException("Client must be fully connected to change its nickname.");
+
+            if (newNickname.Length == 0 || newNickname.Length > this.ServerInformation.NickLength)
+                throw new ArgumentOutOfRangeException("newNickname", "The given nickname is either empty or too long for this server.");
+
+            if (!Validation.IsNick(newNickname))
+                throw new FormatException("The given nickname contains invalid characters.");
+
+            if (0 != Interlocked.Exchange(ref this.nickChangeState, 1))
+                throw new InvalidOperationException("A nickname change is already in progress.");
+
+            var t = (this.nickChangeCompletionSource = new TaskCompletionSource<NickChangeResult>()).Task;
+
+            await this.WriteMessagesAsync(MessageBuilder.Nick(newNickname), cancellationToken);
+
+            await t;
+
+            Thread.VolatileWrite(ref this.nickChangeState, 0);
+
+            return t.Result;
+        }
+
+        /// <summary>
+        /// Attempts to change the nickname of the local user.
+        /// </summary>
+        /// <param name="newNickname"></param>
+        /// <returns></returns>
+        public Task<NickChangeResult> ChangeNicknameAsync(string newNickname)
+        {
+            return this.ChangeNicknameAsync(newNickname, CancellationToken.None);
         }
 
         #endregion

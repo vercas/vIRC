@@ -80,6 +80,12 @@ namespace Test_Application
                     t4.Wait();
                     break;
 
+                case "nick":
+                    var t5 = cl.ChangeNicknameAsync(split[1]);
+                    t5.Wait();
+                    Console.WriteLine(t5.Result);
+                    break;
+
                 case "part":
                     var t1 = testChan.PartAsync();
                     t1.Wait();

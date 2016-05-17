@@ -66,11 +66,13 @@
     <Compile Include="Events\Channel User Parted.cs" />
     <Compile Include="Events\Channel Joined or Parted.cs" />
     <Compile Include="Events\Message Received.cs" />
+    <Compile Include="Events\User Nickname Changed.cs" />
     <Compile Include="Events\User Message Received.cs" />
     <Compile Include="Events\Channel Message Received.cs" />
     <Compile Include="Events\Remote Certificate Validation.cs" />
     <Compile Include="Client.cs" />
     <Compile Include="Message Types.cs" />
+    <Compile Include="Nick Change Result.cs" />
     <Compile Include="Protocols.cs" />
     <Compile Include="Modes.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
