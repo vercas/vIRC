@@ -39,5 +39,9 @@ namespace vIRC.Events
         /// The connection with the server was lost.
         /// </summary>
         ConnectionLoss = 1,
+        /// <summary>
+        /// The connection registration failed.
+        /// </summary>
+        RegistrationFailure = 2,
     }
 }

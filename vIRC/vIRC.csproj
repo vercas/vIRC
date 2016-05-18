@@ -62,7 +62,7 @@
     <Compile Include="Client Status.cs" />
     <Compile Include="Case Mappings\Ascii.cs" />
     <Compile Include="Case Mappings\RFC1459.cs" />
-    <Compile Include="Events\Quit.cs" />
+    <Compile Include="Events\Disconnected.cs" />
     <Compile Include="Events\Channel User Joined.cs" />
     <Compile Include="Events\Channel User Parted.cs" />
     <Compile Include="Events\Channel Joined or Parted.cs" />

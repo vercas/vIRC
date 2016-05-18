@@ -11,21 +11,32 @@ namespace Test_Application
     class Program
     {
         static IrcClient cl = new IrcClient();
-        static IrcClientIdentification id = new IrcClientIdentification()
+        static IrcClientIdentification id = new IrcClientIdentification("Vercas", "vIRC_U", "Vercas's IRC library")
         {
-            Nickname = "vIRC_N",
-            Username = "vIRC_U",
-            RealName = "Vercas's IRC library",
             UseSasl = true,
             NickServUsername = "vIRC",
             NickServPassword = "ratatatatatatata",
+
+            NickConflictResolver = (old) => "vIRC_N",
         };
 
-        static Uri server = new Uri("irc://vps229649.ovh.net:6667");
+        static Uri server = new Uri("irc://chat.freenode.net:6667");
 
         static void Main(string[] args)
         {
-            cl.ConnectAsync(server, id).Wait();
+            var t = cl.ConnectAsync(server, id);
+            t.Wait();
+
+            if (!t.Result)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.BackgroundColor = ConsoleColor.White;
+
+                Console.WriteLine("Connection failed.");
+
+                Console.ReadLine();
+                return;
+            }
 
             if (cl.LocalUser == null)
                 Console.WriteLine("LOCAL USER IS NULL!");

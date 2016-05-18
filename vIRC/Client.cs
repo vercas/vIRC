@@ -24,10 +24,7 @@ namespace vIRC
     {
         internal static readonly string EndMessageString = "\r\n";
         internal static readonly byte[] EndMessageBytes = Encoding.ASCII.GetBytes(EndMessageString);
-        /// <summary>
-        /// Maximum size of an IRC message.
-        /// </summary>
-        public const int MaximumMessageSize = 512;
+        internal const int ReceiptBufferSize = 8100;
 
         Stream stream = null;
         TcpClient tcpClient = null;
@@ -95,14 +92,16 @@ namespace vIRC
         TaskCompletionSource<bool> connectionSource = null;
         TaskCompletionSource<bool> quitSource = null;
 
+        private IrcClientIdentification cid;
+
         /// <summary>
         /// Connects the client to the given server, and monitors cancellation requests.
         /// </summary>
         /// <param name="target">URI indicating the server to connect to and the protocol to use.</param>
         /// <param name="id">Identification data to present to the server.</param>
         /// <param name="cancellationToken">The token to monitor for cancellation requests. The default value is <see cref="System.Threading.CancellationToken.None"/>.</param>
-        /// <returns></returns>
-        public async Task ConnectAsync(Uri target, IrcClientIdentification id, CancellationToken cancellationToken)
+        /// <returns>Whether the connection succeeded or not.</returns>
+        public async Task<bool> ConnectAsync(Uri target, IrcClientIdentification id, CancellationToken cancellationToken)
         {
             if (target == null)
                 throw new ArgumentNullException("target");
@@ -136,8 +135,10 @@ namespace vIRC
                 this.stream = this.tcpClient.GetStream();
 
             if ((int)IrcClientStatus.Connecting != Interlocked.CompareExchange(ref this.status, (int)IrcClientStatus.LoggingIn, (int)IrcClientStatus.Connecting))
-                return;
+                return false;
             //  Failure to compare-exchange here means quitting was requested.
+
+            this.cid = id;
 
             if (id.ServerPassword != null)
                 await this.WriteMessagesAsync(MessageBuilder.Pass(id.ServerPassword), cancellationToken);
@@ -145,16 +146,27 @@ namespace vIRC
             await this.WriteMessagesAsync(MessageBuilder.Nick(id.Nickname).Concat(MessageBuilder.User(id.Username, id.RealName)), cancellationToken);
 
             this.ServerInformation = new IrcServerInformation();
-            this.connectionSource = new TaskCompletionSource<bool>();
+            var t = (this.connectionSource = new TaskCompletionSource<bool>()).Task;
 
             this.StartReceiving();
 
-            await this.connectionSource.Task;
+            bool res = await t;
             this.connectionSource = null;
 
-            if ((int)IrcClientStatus.LoggingIn != Interlocked.CompareExchange(ref this.status, (int)IrcClientStatus.Online, (int)IrcClientStatus.LoggingIn))
-                return;
-            //  Failure to compare-exchange here too means quitting was requested.
+            if (res)
+            {
+                if ((int)IrcClientStatus.LoggingIn != Interlocked.CompareExchange(ref this.status, (int)IrcClientStatus.Online, (int)IrcClientStatus.LoggingIn))
+                    return true;
+                //  Failure to compare-exchange here too means quitting was requested.
+
+                return false;
+                //  No need to call the event here because the QuitAsync method, which caused this branch to execute,
+                //  will call it.
+            }
+
+            this.Disconnected?.Invoke(this, new DisconnectedEventArgs(DisconnectReason.RegistrationFailure));
+
+            return false;
         }
 
         /// <summary>
@@ -162,8 +174,8 @@ namespace vIRC
         /// </summary>
         /// <param name="target">URI indicating the server to connect to and the protocol to use.</param>
         /// <param name="id">Identification data to present to the server.</param>
-        /// <returns></returns>
-        public Task ConnectAsync(Uri target, IrcClientIdentification id)
+        /// <returns>Whether the connection succeeded or not.</returns>
+        public Task<bool> ConnectAsync(Uri target, IrcClientIdentification id)
         {
             return this.ConnectAsync(target, id, CancellationToken.None);
         }
@@ -246,8 +258,8 @@ namespace vIRC
 
         #region Receipt
 
-        private byte[] receiveBuffer = new byte[MaximumMessageSize];
-        private StringBuilder stringBuilder = new StringBuilder(MaximumMessageSize);
+        private byte[] receiveBuffer = new byte[ReceiptBufferSize];
+        private StringBuilder stringBuilder = new StringBuilder(ReceiptBufferSize);
 
         private async void ReceiveData(object state)
         {
@@ -455,7 +467,7 @@ namespace vIRC
 
                 if (cl.LocalUser == u && cl.connectionSource != null)
                 {
-                    cl.connectionSource.SetResult(true);
+                    Interlocked.Exchange(ref cl.connectionSource, null).SetResult(true);
 
                     cl.Connected?.Invoke(cl, new EventArgs());
                 }
@@ -737,7 +749,17 @@ namespace vIRC
 
         private static async Task Handler433(IrcClient cl, Prefix source, List<string> args)
         {
-            Interlocked.Exchange(ref cl.nickChangeCompletionSource, null)?.SetResult(NickChangeResult.InUse);
+            if (cl.Status == IrcClientStatus.LoggingIn)
+            {
+                string newName = cl.cid.NickConflictResolver?.Invoke(args.Count > 2 ? args[1] : args[0]);
+
+                if (newName == null || newName.Length == 0 || !Validation.IsNick(newName))
+                    Interlocked.Exchange(ref cl.connectionSource, null).SetResult(false);
+                else
+                    await cl.WriteMessagesAsync(MessageBuilder.Nick(newName).Concat(MessageBuilder.User(cl.cid.Username, cl.cid.RealName)));
+            }
+            else
+                Interlocked.Exchange(ref cl.nickChangeCompletionSource, null)?.SetResult(NickChangeResult.InUse);
         }
 
         private static async Task Handler436(IrcClient cl, Prefix source, List<string> args)

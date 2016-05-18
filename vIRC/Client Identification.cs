@@ -27,6 +27,11 @@ namespace vIRC
         public string RealName { get; set; }
 
         /// <summary>
+        /// Gets or sets the method called to solve nickname conflicts on connection.
+        /// </summary>
+        public Func<string, string> NickConflictResolver { get; set; }
+
+        /// <summary>
         /// Gets or sets the username used to authenticate with the nickname service.
         /// </summary>
         public string NickServUsername { get; set; }
@@ -47,11 +52,26 @@ namespace vIRC
         public string ServerPassword { get; set; }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="vIRC.IrcClientIdentification"/> class with all values null.
+        /// Initializes a new instance of the <see cref="vIRC.IrcClientIdentification"/> class with the given nickname, username and real name.
         /// </summary>
-        public IrcClientIdentification()
+        /// <param name="nickname"></param>
+        /// <param name="username"></param>
+        /// <param name="realName"></param>
+        public IrcClientIdentification(string nickname, string username, string realName)
         {
+            if (nickname == null)
+                throw new ArgumentNullException("nickname");
+            if (username == null)
+                throw new ArgumentNullException("username");
+            if (realName == null)
+                throw new ArgumentNullException("realName");
 
+            if (!Utils.Validation.IsNick(nickname))
+                throw new FormatException("The given nickname contains invalid characters.");
+
+            this.Nickname = nickname;
+            this.Username = username;
+            this.RealName = realName;
         }
 
         /// <summary>
