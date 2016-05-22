@@ -155,9 +155,9 @@ namespace vIRC
 
             if (res)
             {
-                if ((int)IrcClientStatus.LoggingIn != Interlocked.CompareExchange(ref this.status, (int)IrcClientStatus.Online, (int)IrcClientStatus.LoggingIn))
+                if ((int)IrcClientStatus.LoggingIn == Interlocked.CompareExchange(ref this.status, (int)IrcClientStatus.Online, (int)IrcClientStatus.LoggingIn))
                     return true;
-                //  Failure to compare-exchange here too means quitting was requested.
+                //  Successfully compare-exchangig here too means quitting was NOT requested, and the connection is successful.
 
                 return false;
                 //  No need to call the event here because the QuitAsync method, which caused this branch to execute,
@@ -276,6 +276,11 @@ namespace vIRC
                 }
                 catch (ObjectDisposedException)
                 {
+                    break;
+                }
+                catch (IOException x)
+                {
+                    //if (!(x.InnerException is ObjectDisposedException))
                     break;
                 }
 
@@ -756,7 +761,7 @@ namespace vIRC
                 if (newName == null || newName.Length == 0 || !Validation.IsNick(newName))
                     Interlocked.Exchange(ref cl.connectionSource, null).SetResult(false);
                 else
-                    await cl.WriteMessagesAsync(MessageBuilder.Nick(newName).Concat(MessageBuilder.User(cl.cid.Username, cl.cid.RealName)));
+                    await cl.WriteMessagesAsync(MessageBuilder.Nick(newName));
             }
             else
                 Interlocked.Exchange(ref cl.nickChangeCompletionSource, null)?.SetResult(NickChangeResult.InUse);

@@ -11,16 +11,16 @@ namespace Test_Application
     class Program
     {
         static IrcClient cl = new IrcClient();
-        static IrcClientIdentification id = new IrcClientIdentification("Vercas", "vIRC_U", "Vercas's IRC library")
+        static IrcClientIdentification id = new IrcClientIdentification("vIRC_N", "vIRC_U", "Vercas's IRC library")
         {
             UseSasl = true,
             NickServUsername = "vIRC",
             NickServPassword = "ratatatatatatata",
 
-            NickConflictResolver = (old) => "vIRC_N",
+            NickConflictResolver = (old) => old + "_",
         };
 
-        static Uri server = new Uri("irc://chat.freenode.net:6667");
+        static Uri server = new Uri("ircs://chat.freenode.net:7000");
 
         static void Main(string[] args)
         {
