@@ -49,6 +49,8 @@
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Anti-Spam Interface.cs" />
+    <Compile Include="Anti-Spam.cs" />
     <Compile Include="Case Mappings\INormalizer.cs" />
     <Compile Include="Channel User.cs" />
     <Compile Include="Client Identification.cs" />

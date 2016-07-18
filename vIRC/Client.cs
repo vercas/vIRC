@@ -70,11 +70,26 @@ namespace vIRC
         public CaseMappings.INormalizer NameNormalizer { get { return this.normalizer; } }
 
         /// <summary>
+        /// Gets the anti-spam measure used by this client.
+        /// </summary>
+        public IAntiSpam AntiSpam { get; internal set; }
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="vIRC.IrcClient"/> class.
         /// </summary>
         public IrcClient()
+            : this(new AntiSpam())
+        {
+            //  Nothing extra needs to be done here.
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="vIRC.IrcClient"/> class with the given anti-spam measure.
+        /// </summary>
+        public IrcClient(IAntiSpam antiSpam)
         {
             this.Protocol = IrcProtocols.Invalid;
+            this.AntiSpam = antiSpam;
         }
 
         #region Connection
@@ -1083,6 +1098,9 @@ namespace vIRC
             if (chan.partingStatus != 0)
                 throw new InvalidOperationException("The given channel is in the process of parting.");
 
+            if (this.AntiSpam != null)
+                await this.AntiSpam.Hit();
+
             switch (type)
             {
             case IrcMessageTypes.Action:
@@ -1134,6 +1152,9 @@ namespace vIRC
 
             if (user.Quit)
                 throw new InvalidOperationException("The given user has quit the server.");
+
+            if (this.AntiSpam != null)
+                await this.AntiSpam.Hit();
             
             switch (type)
             {
@@ -1180,6 +1201,9 @@ namespace vIRC
                 throw new ArgumentNullException("target");
             if (message == null)
                 throw new ArgumentNullException("message");
+
+            if (this.AntiSpam != null)
+                await this.AntiSpam.Hit();
 
             switch (type)
             {
