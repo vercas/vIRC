@@ -24,6 +24,8 @@ namespace Test_Application
 
         static void Main(string[] args)
         {
+            cl.RemoteCertificateValidation += Cl_RemoteCertificateValidation;
+
             var t = cl.ConnectAsync(server, id);
             t.Wait();
 
@@ -91,6 +93,15 @@ namespace Test_Application
                     t4.Wait();
                     break;
 
+                case "msgn":
+                    for (int i = int.Parse(split[1]); i > 0; --i)
+                    {
+                        var t7 = cl.SendMessageAsync(split[2], input.Substring("msg".Length + 3 + split[1].Length + split[2].Length));
+                        t7.Wait();
+                    }
+
+                    break;
+
                 case "nick":
                     var t5 = cl.ChangeNicknameAsync(split[1]);
                     t5.Wait();
@@ -141,7 +152,13 @@ namespace Test_Application
                 Console.BackgroundColor = ConsoleColor.White;
 
                 Console.WriteLine("Quitting timed out!");
+                Console.ReadLine();
             }
+        }
+
+        private static void Cl_RemoteCertificateValidation(object sender, vIRC.Events.RemoteCertificateValidationEventArgs e)
+        {
+            e.Accept = true;
         }
     }
 }
