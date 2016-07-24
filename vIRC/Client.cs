@@ -23,6 +23,7 @@ namespace vIRC
     public class IrcClient
     {
         internal static readonly string EndMessageString = "\r\n";
+        internal static readonly char[] EndMessageChars = EndMessageString.ToCharArray();
         internal static readonly byte[] EndMessageBytes = Encoding.ASCII.GetBytes(EndMessageString);
         internal const int ReceiptBufferSize = 8100;
 
@@ -203,6 +204,9 @@ namespace vIRC
         /// <returns></returns>
         public async Task QuitAsync(string reason, CancellationToken cancellationToken)
         {
+            if (reason != null && reason.IndexOfAny(EndMessageChars) >= 0)
+                throw new ArgumentOutOfRangeException("reason", "Reason cannot contain newlines or carriage returns.");
+
             if ((int)IrcClientStatus.Connecting == Interlocked.CompareExchange(ref this.status, (int)IrcClientStatus.Quitting, (int)IrcClientStatus.Connecting))
             {
                 //  It appears to just be connecting, so killing the socket should be enough.
@@ -973,7 +977,13 @@ namespace vIRC
                 throw new ArgumentNullException("channel");
             if (channel.Length < 1)
                 throw new ArgumentOutOfRangeException("Channel name must be non-empty.");
-            
+
+            if (channel.IndexOfAny(EndMessageChars) >= 0)
+                throw new ArgumentOutOfRangeException("channel", "Channel name cannot contain newlines or carriage returns.");
+
+            if (key != null && key.IndexOfAny(EndMessageChars) >= 0)
+                throw new ArgumentOutOfRangeException("key", "Channel key cannot contain newlines or carriage returns.");
+
             channel = this.normalizer.Normalize(channel);
             //  The name of the channel must be normalized according to the known rules.
 
@@ -1035,6 +1045,9 @@ namespace vIRC
             if (this.Status != IrcClientStatus.Online)
                 throw new InvalidOperationException("Client must be fully connected to part channels.");
 
+            if (reason != null && reason.IndexOfAny(EndMessageChars) >= 0)
+                throw new ArgumentOutOfRangeException("reason", "Reason cannot contain newlines or carriage returns.");
+
             var oldPartStatus = Interlocked.CompareExchange(ref chan.partingStatus, 1, 0);
 
             if (oldPartStatus == 1)
@@ -1082,12 +1095,10 @@ namespace vIRC
         /// <param name="type">The type of message to send.</param>
         /// <param name="cancellationToken">The token to monitor for cancellation requests. The default value is <see cref="System.Threading.CancellationToken.None"/>.</param>
         /// <returns></returns>
-        public async Task SendMessageAsync(IrcChannel chan, string message, IrcMessageTypes type, CancellationToken cancellationToken)
+        public Task SendMessageAsync(IrcChannel chan, string message, IrcMessageTypes type, CancellationToken cancellationToken)
         {
             if (chan == null)
                 throw new ArgumentNullException("chan");
-            if (message == null)
-                throw new ArgumentNullException("message");
 
             if (chan.Client != this)
                 throw new InvalidOperationException("The given channel is associated with another client.");
@@ -1098,26 +1109,7 @@ namespace vIRC
             if (chan.partingStatus != 0)
                 throw new InvalidOperationException("The given channel is in the process of parting.");
 
-            if (this.AntiSpam != null)
-                await this.AntiSpam.Hit();
-
-            switch (type)
-            {
-            case IrcMessageTypes.Action:
-                message = message.TurnIntoIrcAction();
-                goto case IrcMessageTypes.Standard;
-
-            case IrcMessageTypes.Standard:
-                await this.WriteMessagesAsync(MessageBuilder.Privmsg(chan.Name, message), cancellationToken);
-                break;
-
-            case IrcMessageTypes.Notice:
-                await this.WriteMessagesAsync(MessageBuilder.Notice(chan.Name, message), cancellationToken);
-                break;
-
-            default:
-                throw new ArgumentOutOfRangeException("type", "Unknown IRC message type!");
-            }
+            return this.SendMessageAsync(chan.Name, message, type, cancellationToken);
         }
 
         /// <summary>
@@ -1140,12 +1132,10 @@ namespace vIRC
         /// <param name="type">The type of message to send.</param>
         /// <param name="cancellationToken">The token to monitor for cancellation requests. The default value is <see cref="System.Threading.CancellationToken.None"/>.</param>
         /// <returns></returns>
-        public async Task SendMessageAsync(IrcUser user, string message, IrcMessageTypes type, CancellationToken cancellationToken)
+        public Task SendMessageAsync(IrcUser user, string message, IrcMessageTypes type, CancellationToken cancellationToken)
         {
             if (user == null)
                 throw new ArgumentNullException("user");
-            if (message == null)
-                throw new ArgumentNullException("message");
 
             if (user.Client != this)
                 throw new InvalidOperationException("The given user is associated with another client.");
@@ -1153,26 +1143,7 @@ namespace vIRC
             if (user.Quit)
                 throw new InvalidOperationException("The given user has quit the server.");
 
-            if (this.AntiSpam != null)
-                await this.AntiSpam.Hit();
-            
-            switch (type)
-            {
-            case IrcMessageTypes.Action:
-                message = message.TurnIntoIrcAction();
-                goto case IrcMessageTypes.Standard;
-
-            case IrcMessageTypes.Standard:
-                await this.WriteMessagesAsync(MessageBuilder.Privmsg(user.Nickname, message), cancellationToken);
-                break;
-
-            case IrcMessageTypes.Notice:
-                await this.WriteMessagesAsync(MessageBuilder.Notice(user.Nickname, message), cancellationToken);
-                break;
-
-            default:
-                throw new ArgumentOutOfRangeException("type", "Unknown IRC message type!");
-            }
+            return this.SendMessageAsync(user.Nickname, message, type, cancellationToken);
         }
 
         /// <summary>
@@ -1201,6 +1172,9 @@ namespace vIRC
                 throw new ArgumentNullException("target");
             if (message == null)
                 throw new ArgumentNullException("message");
+
+            if (message.IndexOfAny(EndMessageChars) >= 0)
+                throw new ArgumentOutOfRangeException("message", "Message cannot contain newlines or carriage returns.");
 
             if (this.AntiSpam != null)
                 await this.AntiSpam.Hit();
@@ -1313,7 +1287,10 @@ namespace vIRC
             if (this.ServerInformation.AwayLength.HasValue
                 && reason != null && reason.Length > this.ServerInformation.AwayLength)
                 throw new ArgumentOutOfRangeException("Away reason is too long for this server.");
-            
+
+            if (reason != null && reason.IndexOfAny(EndMessageChars) >= 0)
+                throw new ArgumentOutOfRangeException("reason", "Away reason cannot contain newlines or carriage returns.");
+
             if (0 != Interlocked.Exchange(ref this.awayState, 1))
                 throw new InvalidOperationException("An away status change is already in progress.");
 
